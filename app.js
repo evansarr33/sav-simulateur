@@ -1,3 +1,7 @@
+// récupère session_id depuis ?session_id=...
+const q = new URLSearchParams(location.search);
+const fromURL = q.get("session_id");
+if (fromURL) { const el = document.querySelector("#sid"); if (el) el.value = fromURL; }
 const $ = sel => document.querySelector(sel);
 const thread = $("#thread");
 const sid = () => $("#sid").value || "demo";
