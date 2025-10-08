@@ -2,43 +2,90 @@
 <html lang="fr">
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Simulateur SAV – Chat</title>
+<title>Simulateur SAV — Chat</title>
 <link rel="stylesheet" href="/style.css" />
 <body>
-  <header class="bar">
-    <h1>Simulateur SAV</h1>
-    <div class="right">
-      <label>Session:
-        <input id="sid" value="demo" />
-      </label>
-      <button id="clear">Effacer</button>
-    </div>
-  </header>
+<header class="bar">
+  <h1>Chat de simulation</h1>
+  <div class="small"><a href="/scenarios.html" style="color:#60a5fa;text-decoration:none">← Scénarios</a></div>
+</header>
 
-  <main class="layout">
-    <section id="thread" class="thread"></section>
+<main class="layout">
+  <section id="thread" class="thread"></section>
+  <aside class="actions">
+    <h3>Actions SAV</h3>
+    <button class="btn" data-act="rma">Créer RMA</button>
+    <button class="btn" data-act="discount">-20% (test)</button>
+    <button class="btn" data-act="score" style="background:#22c55e;color:#05240e">Clôturer & scorer</button>
+    <div class="alert small">Session: <span id="sid"></span></div>
+  </aside>
+</main>
 
-    <aside class="actions">
-      <h3>Actions SAV</h3>
-      <button data-act="rma">Créer RMA</button>
-      <button data-act="discount">-20% (test)</button>
-      <button data-act="score">Clôturer & scorer</button>
+<footer class="composer">
+  <input id="msg" placeholder="Tape ton message..." />
+  <button class="btn" id="send">Envoyer</button>
+</footer>
 
-      <details>
-        <summary>Avancé (optionnel)</summary>
-        <label>Token (Authorization):
-          <textarea id="tok" placeholder="colle ici le access_token Supabase si tu es connecté"></textarea>
-        </label>
-      </details>
-    </aside>
-  </main>
-
-  <footer class="composer">
-    <input id="msg" placeholder="Tape ton message..." />
-    <button id="send">Envoyer</button>
-  </footer>
-
-  <script src="/app.js"></script>
+<script>
+const token = localStorage.getItem("sav_token") || "";
+const q = new URLSearchParams(location.search);
+const sessionId = q.get("session_id") || "";
+document.getElementById('sid').textContent = sessionId || "(vide)";
+const thread = document.getElementById('thread');
+function addMsg(who, text) {
+  const div = document.createElement("div");
+  div.className = `msg ${who}`;
+  div.innerHTML = `<div class="bubble">${(text||"").replace(/</g,"&lt;")}</div>`;
+  thread.appendChild(div);
+  thread.scrollTop = thread.scrollHeight;
+}
+function cleanText(t=""){
+  try{
+    return String(t)
+      .replace(/<\/?s>/gi, "")
+      .replace(/\[(?:\/)?(?:OUT|INST|SYS|SYSTEM|USER|ASSISTANT)\]/gi, "")
+      .replace(/<[^>]+>/g, "")
+      .replace(/```[\s\S]*?```/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }catch{ return t||""; }
+}
+async function postJSON(url, payload) {
+  const r = await fetch(url, {
+    method:"POST",
+    headers: { "Content-Type":"application/json", "Authorization":"Bearer " + token },
+    body: JSON.stringify(payload)
+  });
+  const t = await r.text();
+  try { return JSON.parse(t) } catch { return { raw:t } }
+}
+document.getElementById('send').onclick = async () => {
+  const input = document.getElementById('msg');
+  const text = input.value.trim();
+  if (!text || !sessionId) return;
+  addMsg("agent", text);
+  input.value = "";
+  const resp = await postJSON("/api/simulator-chat", { session_id: sessionId, agent_message: text });
+  addMsg("bot", cleanText(resp.bot_message || JSON.stringify(resp)));
+};
+document.getElementById('msg').addEventListener('keydown', e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById('send').click(); }
+});
+document.querySelectorAll(".actions button").forEach(btn => {
+  btn.onclick = async () => {
+    const act = btn.dataset.act;
+    if (act === "rma") {
+      const r = await postJSON("/api/sav-action", { session_id: sessionId, action_type: "rma", justification:"colis manquant" });
+      addMsg("bot", r.notice || JSON.stringify(r));
+    } else if (act === "discount") {
+      const r = await postJSON("/api/sav-action", { session_id: sessionId, action_type: "discount", amount_cents: 1200, justification:"défaut mineur" });
+      addMsg("bot", r.notice || JSON.stringify(r));
+    } else if (act === "score") {
+      const r = await postJSON("/api/score-session", { session_id: sessionId });
+      addMsg("bot", `Score total: ${r.total}/100\n${JSON.stringify(r.breakdown)}`);
+    }
+  };
+});
+</script>
 </body>
 </html>
-

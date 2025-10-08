@@ -1,10 +1,8 @@
 const ORIGIN = process.env.ALLOWED_ORIGIN || "https://sav-simulateur.vercel.app";
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const SUPABASE_URL = "https://bkgpmfqzkzxehjgshnga.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrZ3BtZnF6a3p4ZWhqZ3NobmdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5MDM2NDAsImV4cCI6MjA3NTQ3OTY0MH0.1BHkv-grxjDz92bovjDjb-8dHaWPSvQruudVx1kkdqw";
 const SERVICE_ROLE = process.env.SERVICE_ROLE_KEY;
-
-const json = (res, code, obj) => { res.status(code).json(obj) };
-
+const json = (res, code, obj) => res.status(code).json(obj);
 async function getUserFromToken(accessToken) {
   if (!accessToken) return null;
   const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
@@ -14,7 +12,6 @@ async function getUserFromToken(accessToken) {
   const u = await r.json();
   return u?.id ? u : null;
 }
-
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", ORIGIN);
   res.setHeader("Access-Control-Allow-Headers", "authorization, content-type");
@@ -23,22 +20,14 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method === "GET") return json(res, 200, { status: "ok", endpoint: "new-session" });
   if (req.method !== "POST") return json(res, 405, { error: "Method not allowed" });
-
   try {
-    // Auth obligatoire
     const auth = req.headers.authorization || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     if (!token) return json(res, 401, { error: "Missing Authorization" });
     const user = await getUserFromToken(token);
     if (!user) return json(res, 401, { error: "Invalid token" });
-
-    // Entrée
     const { scenario_id } = req.body || {};
-    if (!(Number.isInteger(scenario_id) && scenario_id > 0)) {
-      return json(res, 400, { error: "Invalid scenario_id" });
-    }
-
-    // Création de session (state = running)
+    if (!(Number.isInteger(scenario_id) && scenario_id > 0)) return json(res, 400, { error: "Invalid scenario_id" });
     const url = `${SUPABASE_URL}/rest/v1/sessions`;
     const resp = await fetch(url, {
       method: "POST",
@@ -48,16 +37,9 @@ export default async function handler(req, res) {
         "Content-Type": "application/json",
         Prefer: "return=representation"
       },
-      body: JSON.stringify([{
-        user_id: user.id,
-        scenario_id,
-        state: "running"
-      }])
+      body: JSON.stringify([{ user_id: user.id, scenario_id, state: "running" }])
     });
-    if (!resp.ok) {
-      const details = await resp.text();
-      return json(res, 500, { error: "Session insert failed", details });
-    }
+    if (!resp.ok) { const details = await resp.text(); return json(res, 500, { error: "Session insert failed", details }); }
     const rows = await resp.json();
     return json(res, 200, { session_id: rows[0].id });
   } catch (e) {
