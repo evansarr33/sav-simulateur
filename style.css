@@ -21,6 +21,7 @@ input,textarea{background:#fff;color:var(--text);border:1px solid var(--border);
 input:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(29,78,216,0.18)}
 .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
 .small{color:var(--muted);font-size:13px;line-height:1.4}
+.muted{color:var(--muted);font-style:italic}
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;padding:20px}
 .thread{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;height:68vh;overflow:auto;box-shadow:0 6px 18px rgba(20,32,51,0.04)}
 .msg{display:flex;margin:10px 0;gap:10px}

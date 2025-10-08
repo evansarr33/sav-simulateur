@@ -44,7 +44,7 @@ async function getSession(session_id) {
   return rows?.[0] || null;
 }
 
-async function insertBotMessage(session_id, content) {
+async function insertMessage(session_id, author, content) {
   const url = `${SUPABASE_URL}/rest/v1/messages`;
   await fetch(url, {
     method: "POST",
@@ -54,8 +54,33 @@ async function insertBotMessage(session_id, content) {
       "Content-Type": "application/json",
       Prefer: "return=minimal"
     },
-    body: JSON.stringify([{ session_id, author: "bot", content }])
+    body: JSON.stringify([{ session_id, author, content }])
   });
+}
+
+async function fetchScenarioDetails(id) {
+  if (!id) return null;
+  const url = `${SUPABASE_URL}/rest/v1/scenarios?id=eq.${encodeURIComponent(id)}&select=title,persona,mode,level`;
+  const resp = await fetch(url, { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SERVICE_ROLE}` } });
+  if (!resp.ok) return null;
+  const rows = await resp.json();
+  return rows?.[0] || null;
+}
+
+async function fetchRecentMessages(session_id, limit = 20) {
+  const base = `${SUPABASE_URL}/rest/v1/messages`;
+  const params = new URLSearchParams({
+    session_id: `eq.${session_id}`,
+    select: "author,content,created_at",
+    order: "created_at.asc",
+    limit: String(limit)
+  });
+  const resp = await fetch(`${base}?${params.toString()}`, {
+    headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SERVICE_ROLE}` }
+  });
+  if (!resp.ok) return [];
+  const rows = await resp.json();
+  return Array.isArray(rows) ? rows : [];
 }
 
 // ===== Handler =====
@@ -65,9 +90,7 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Vary", "Origin");
   if (req.method === "OPTIONS") return res.status(204).end();
-
-  if (req.method === "GET") return json(res, 200, { status: "ok", endpoint: "simulator-chat" });
-  if (req.method !== "POST") return json(res, 405, { error: "Method not allowed" });
+  if (!["GET", "POST"].includes(req.method)) return json(res, 405, { error: "Method not allowed" });
 
   try {
     // 1) Auth obligatoire
@@ -77,6 +100,23 @@ export default async function handler(req, res) {
 
     const user = await getUserFromToken(accessToken);
     if (!user) return json(res, 401, { error: "Invalid token" });
+
+    if (req.method === "GET") {
+      const { session_id } = req.query || {};
+      if (!isUUID(session_id)) return json(res, 400, { error: "Invalid session_id" });
+      const session = await getSession(session_id);
+      if (!session) return json(res, 404, { error: "Session not found" });
+      if (session.user_id !== user.id) return json(res, 403, { error: "Forbidden" });
+
+      const history = await fetchRecentMessages(session_id, 50);
+      return json(res, 200, {
+        messages: history.map(m => ({
+          author: m.author,
+          content: m.content,
+          created_at: m.created_at
+        }))
+      });
+    }
 
     // Rate limit par user (fallback IP si jamais)
     const key = `chat:${user.id || req.headers["x-forwarded-for"] || req.socket.remoteAddress}`;
@@ -92,22 +132,47 @@ export default async function handler(req, res) {
     if (session.user_id !== user.id) return json(res, 403, { error: "Forbidden (not your session)" });
     if (session.state !== "running") return json(res, 409, { error: "Session is not running" });
 
-    // 3) Appel IA (contexte simple)
+    // 3) Historisation du message agent puis récupération du contexte
+    await insertMessage(session_id, "agent", agent_message);
+
+    const [scenario, history] = await Promise.all([
+      fetchScenarioDetails(session.scenario_id),
+      fetchRecentMessages(session_id, 30)
+    ]);
+
+    const trimmedHistory = history
+      .filter(m => (m?.content || "").trim().length > 0)
+      .slice(-20)
+      .map(m => ({
+        role: m.author === "agent" ? "user" : "assistant",
+        content: String(m.content).slice(0, 2000)
+      }));
+
+    const personaLines = [];
+    if (scenario?.title) personaLines.push(`Dossier: ${scenario.title}.`);
+    if (scenario?.persona) personaLines.push(`Ton profil: ${scenario.persona}.`);
+    if (scenario?.mode) personaLines.push(`Canal actuel: ${scenario.mode}.`);
+    if (scenario?.level) personaLines.push(`Difficulté dossier: ${scenario.level}.`);
+
     const systemContent = [
-      "Tu joues le rôle d'un CLIENT dans un entraînement SAV e-commerce.",
-      "Reste poli, ferme, concret. Ne promets rien hors politique.",
-      "Réponds court et clair."
+      "Tu es un client réel d'un service e-commerce et tu échanges avec un conseiller.",
+      "Réagis uniquement comme ce client: reste cohérent avec l'historique et ne révèle jamais que tu es un outil ou une IA.",
+      "Exprime tes ressentis ou tes attentes avec des messages concis et crédibles.",
+      ...personaLines,
+      "Si le conseiller t'apporte une solution, réponds en conséquence (gratitude, questions complémentaires, etc.)."
     ].join("\n");
+
+    const messagesPayload = [
+      { role: "system", content: systemContent },
+      ...trimmedHistory
+    ];
 
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: OPENROUTER_MODEL,
-        messages: [
-          { role: "system", content: systemContent },
-          { role: "user", content: agent_message }
-        ],
+        messages: messagesPayload,
         temperature: 0.6,
         max_tokens: 256
       })
@@ -118,10 +183,10 @@ export default async function handler(req, res) {
       return json(res, 502, { error: "OpenRouter error", details });
     }
     const data = await resp.json();
-    const bot_message = data?.choices?.[0]?.message?.content?.trim() || "Je vous ai bien lu.";
+    const bot_message = data?.choices?.[0]?.message?.content?.trim() || "Merci pour votre retour.";
 
     // 4) Écriture message bot
-    await insertBotMessage(session_id, bot_message);
+    await insertMessage(session_id, "bot", bot_message);
 
     return json(res, 200, { bot_message, humeur: 0, meta: { model: OPENROUTER_MODEL } });
   } catch (e) {
