@@ -2,27 +2,28 @@
 <html lang="fr">
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Simulateur SAV — Chat</title>
+<title>Espace agent — Conversation client</title>
 <link rel="stylesheet" href="/style.css" />
 <body>
 <header class="bar">
-  <h1>Chat de simulation</h1>
-  <div class="small"><a href="/scenarios.html" style="color:#60a5fa;text-decoration:none">← Scénarios</a></div>
+  <h1>Conversation client</h1>
+  <div class="small"><a href="/scenarios.html" style="color:#1d4ed8;text-decoration:none">← Dossiers clients</a></div>
 </header>
 
 <main class="layout">
   <section id="thread" class="thread"></section>
   <aside class="actions">
-    <h3>Actions SAV</h3>
+    <h3>Actions de suivi</h3>
     <button class="btn" data-act="rma">Créer RMA</button>
-    <button class="btn" data-act="discount">-20% (test)</button>
-    <button class="btn" data-act="score" style="background:#22c55e;color:#05240e">Clôturer & scorer</button>
-    <div class="alert small">Session: <span id="sid"></span></div>
+    <button class="btn" data-act="discount">Appliquer un geste commercial</button>
+    <button class="btn" data-act="score" style="background:#16a34a">Clôturer & scorer</button>
+    <div class="alert small">Identifiant dossier: <span id="sid"></span></div>
+    <div class="alert small" style="margin-top:8px">Rappel: le correspondant reste un client réel pour vous. Ne mentionnez jamais d'outils internes ni d'IA.</div>
   </aside>
 </main>
 
 <footer class="composer">
-  <input id="msg" placeholder="Tape ton message..." />
+  <input id="msg" placeholder="Rédigez votre réponse client..." />
   <button class="btn" id="send">Envoyer</button>
 </footer>
 
