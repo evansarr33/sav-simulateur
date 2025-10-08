@@ -1,19 +1,55 @@
 <!doctype html>
-<html>
-  <body>
-    <button id="go">Tester l'API</button>
-    <pre id="out"></pre>
+<html lang="fr">
+  <meta charset="utf-8" />
+  <title>Test simulateur SAV</title>
+  <body style="font-family: system-ui; padding: 20px">
+    <h1>Test simulateur SAV</h1>
+
+    <div style="margin-bottom:12px;">
+      <label>Session ID: <input id="sid" value="demo" /></label>
+    </div>
+
+    <button id="ping">PING /api/simulator-chat (GET)</button>
+    <button id="ask">Demander au client (POST)</button>
+    <button id="rma">Créer RMA (POST)</button>
+    <button id="score">Clôturer & scorer (POST)</button>
+
+    <pre id="out" style="margin-top:16px; background:#f6f6f6; padding:12px; border:1px solid #ddd;"></pre>
+
     <script>
-      document.getElementById('go').onclick = async () => {
-        const r = await fetch("/api/simulator-chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            session_id: "demo",
-            agent_message: "Bonjour, test depuis test.html"
-          })
+      const out = document.getElementById('out');
+      const sid = () => document.getElementById('sid').value || 'demo';
+
+      document.getElementById('ping').onclick = async () => {
+        const r = await fetch('/api/simulator-chat');
+        out.textContent = await r.text();
+      };
+
+      document.getElementById('ask').onclick = async () => {
+        const r = await fetch('/api/simulator-chat', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ session_id: sid(), agent_message: "Bonjour, mon suivi indique livré mais je n'ai rien reçu." })
         });
-        document.getElementById('out').textContent = await r.text();
+        out.textContent = await r.text();
+      };
+
+      document.getElementById('rma').onclick = async () => {
+        const r = await fetch('/api/sav-action', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ session_id: sid(), action_type: 'rma', justification:'colis manquant' })
+        });
+        out.textContent = await r.text();
+      };
+
+      document.getElementById('score').onclick = async () => {
+        const r = await fetch('/api/score-session', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ session_id: sid() })
+        });
+        out.textContent = await r.text();
       };
     </script>
   </body>
