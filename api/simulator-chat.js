@@ -195,6 +195,10 @@ export default async function handler(req, res) {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": GOOGLE_API_KEY
       },
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_MODEL}:generateContent?key=${GOOGLE_API_KEY}`;
+    const resp = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(googlePayload)
     });
 
@@ -225,6 +229,7 @@ export default async function handler(req, res) {
       .map(part => part?.text || "")
       .join("\n")
       .trim() || "Merci pour votre retour.";
+    const bot_message = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "Merci pour votre retour.";
 
     // 4) Écriture message bot
     await insertMessage(session_id, "bot", bot_message);
