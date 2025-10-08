@@ -4,6 +4,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Sélecteur de scénarios</title>
 <link rel="stylesheet" href="/style.css" />
+<script src="/js/config.js"></script>
+<script src="/js/utils.js"></script>
 <body>
 <header class="bar"><h1>Simulateur SAV — Scénarios</h1><div class="small" id="uinfo"></div></header>
 <main style="padding:16px">
@@ -18,62 +20,125 @@
   <pre id="out" class="small"></pre>
 </main>
 <script>
-const SUPABASE_URL  = "https://bkgpmfqzkzxehjgshnga.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrZ3BtZnF6a3p4ZWhqZ3NobmdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5MDM2NDAsImV4cCI6MjA3NTQ3OTY0MH0.1BHkv-grxjDz92bovjDjb-8dHaWPSvQruudVx1kkdqw";
-const token = localStorage.getItem("sav_token") || "";
 const out = document.getElementById('out');
 const list = document.getElementById('list');
+const userInfo = document.getElementById('uinfo');
+const reloadBtn = document.getElementById('reload');
+const logoutBtn = document.getElementById('logout');
 
-document.getElementById('logout').onclick = () => { localStorage.removeItem("sav_token"); location.href = "/"; };
-document.getElementById('reload').onclick = () => loadScenarios();
+function redirectToLogin(message) {
+  if (message) {
+    out.textContent = message;
+  }
+  SAV.clearToken();
+  location.href = '/';
+}
 
 async function whoAmI() {
-  if (!token) return "(non connecté)";
-  const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { authorization: "Bearer " + token, apikey: SUPABASE_ANON } });
-  if (!r.ok) return "(token invalide)";
-  const u = await r.json();
-  return u?.email || u?.id || "(inconnu)";
+  const token = SAV.getToken();
+  if (!token) {
+    return '(non connecté)';
+  }
+  try {
+    const { data } = await SAV.supabaseFetch('auth/v1/user');
+    if (!data) {
+      return '(inconnu)';
+    }
+    return data.email || data.id || '(inconnu)';
+  } catch (e) {
+    if (e.status === 401 || e.status === 403) {
+      redirectToLogin('Token expiré, veuillez vous reconnecter.');
+    }
+    return '(token invalide)';
+  }
 }
 
-async function loadScenarios(){
-  list.innerHTML = "";
-  out.textContent = "Chargement...";
-  if (!token) { out.textContent = "⚠️ Pas de token: retour à la page de connexion."; location.href="/"; return; }
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/scenarios?select=id,title,level,persona,mode&order=level.asc`, {
-    headers: { apikey: SUPABASE_ANON, Authorization: "Bearer " + token }
-  });
-  if (!r.ok) { out.textContent = "Erreur chargement: " + (await r.text()); return; }
-  const rows = await r.json();
-  if (!rows.length) { out.textContent = "Aucun scénario visible."; return; }
-  out.textContent = "";
-  rows.forEach(sc => {
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
-      <h3 style="margin:0 0 6px 0">${sc.title}</h3>
-      <div class="small">Niveau: ${sc.level} · Persona: ${sc.persona} · Mode: ${sc.mode}</div>
-      <div style="margin-top:10px">
-        <button class="btn" data-id="${sc.id}">Lancer</button>
-      </div>`;
-    list.appendChild(card);
-  });
-  list.querySelectorAll('button').forEach(btn=>{
-    btn.onclick = async () => {
-      const scenario_id = Number(btn.dataset.id);
-      out.textContent = "Création de la session...";
-      const resp = await fetch("/api/new-session", {
-        method:"POST",
-        headers: { "Content-Type":"application/json", "Authorization":"Bearer " + token },
-        body: JSON.stringify({ scenario_id })
-      });
-      const data = await resp.json();
-      if (!resp.ok) { out.textContent = "Erreur: " + JSON.stringify(data); return; }
-      location.href = `/chat.html?session_id=${encodeURIComponent(data.session_id)}`;
-    };
-  });
+async function loadScenarios() {
+  const token = SAV.getToken();
+  if (!token) {
+    redirectToLogin('⚠️ Pas de token: retour à la page de connexion.');
+    return;
+  }
+
+  list.innerHTML = '';
+  out.textContent = 'Chargement...';
+
+  try {
+    const { data } = await SAV.supabaseFetch('rest/v1/scenarios', {
+      searchParams: {
+        select: 'id,title,level,persona,mode',
+        order: 'level.asc'
+      }
+    });
+
+    if (!Array.isArray(data) || data.length === 0) {
+      out.textContent = 'Aucun scénario visible.';
+      return;
+    }
+
+    out.textContent = '';
+    data.forEach(sc => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <h3 style="margin:0 0 6px 0">${sc.title}</h3>
+        <div class="small">Niveau: ${sc.level} · Persona: ${sc.persona} · Mode: ${sc.mode}</div>
+        <div style="margin-top:10px">
+          <button class="btn" data-id="${sc.id}">Lancer</button>
+        </div>`;
+      list.appendChild(card);
+    });
+
+    list.querySelectorAll('button').forEach(btn => {
+      btn.onclick = async () => {
+        const scenarioId = Number(btn.dataset.id);
+        if (!scenarioId) {
+          return;
+        }
+        out.textContent = 'Création de la session...';
+        const result = await SAV.fetchJSON('/api/new-session', {
+          method: 'POST',
+          body: { scenario_id: scenarioId },
+          throwOnError: false
+        });
+        if (!result.ok) {
+          const errData = result.data;
+          const message = typeof errData === 'string' ? errData : JSON.stringify(errData);
+          out.textContent = 'Erreur: ' + message;
+          if (result.status === 401 || result.status === 403) {
+            redirectToLogin('Session expirée, veuillez vous reconnecter.');
+          }
+          return;
+        }
+        const payload = result.data || {};
+        if (!payload.session_id) {
+          out.textContent = 'Réponse inattendue du serveur.';
+          return;
+        }
+        location.href = `/chat.html?session_id=${encodeURIComponent(payload.session_id)}`;
+      };
+    });
+  } catch (e) {
+    if (e.status === 401 || e.status === 403) {
+      redirectToLogin('Token expiré, veuillez vous reconnecter.');
+      return;
+    }
+    const errMsg = typeof e?.data === 'string' ? e.data : (e?.message || e);
+    out.textContent = 'Erreur chargement: ' + errMsg;
+  }
 }
 
-whoAmI().then(email => document.getElementById('uinfo').textContent = email);
+logoutBtn.addEventListener('click', () => {
+  SAV.clearToken();
+  location.href = '/';
+});
+
+reloadBtn.addEventListener('click', () => loadScenarios());
+
+whoAmI().then(email => {
+  userInfo.textContent = email;
+});
+
 loadScenarios();
 </script>
 </body>

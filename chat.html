@@ -4,6 +4,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Simulateur SAV — Chat</title>
 <link rel="stylesheet" href="/style.css" />
+<script src="/js/config.js"></script>
+<script src="/js/utils.js"></script>
 <body>
 <header class="bar">
   <h1>Chat de simulation</h1>
@@ -27,65 +29,128 @@
 </footer>
 
 <script>
-const token = localStorage.getItem("sav_token") || "";
 const q = new URLSearchParams(location.search);
-const sessionId = q.get("session_id") || "";
-document.getElementById('sid').textContent = sessionId || "(vide)";
+const sessionId = q.get('session_id') || '';
 const thread = document.getElementById('thread');
+const composerInput = document.getElementById('msg');
+const sendBtn = document.getElementById('send');
+
+document.getElementById('sid').textContent = sessionId || '(vide)';
+
 function addMsg(who, text) {
-  const div = document.createElement("div");
+  const div = document.createElement('div');
   div.className = `msg ${who}`;
-  div.innerHTML = `<div class="bubble">${(text||"").replace(/</g,"&lt;")}</div>`;
+  div.innerHTML = `<div class="bubble">${(text || '').replace(/</g, '&lt;')}</div>`;
   thread.appendChild(div);
   thread.scrollTop = thread.scrollHeight;
 }
-function cleanText(t=""){
-  try{
+
+function cleanText(t = '') {
+  try {
     return String(t)
-      .replace(/<\/?s>/gi, "")
-      .replace(/\[(?:\/)?(?:OUT|INST|SYS|SYSTEM|USER|ASSISTANT)\]/gi, "")
-      .replace(/<[^>]+>/g, "")
-      .replace(/```[\s\S]*?```/g, "")
-      .replace(/\n{3,}/g, "\n\n")
+      .replace(/<\/?s>/gi, '')
+      .replace(/\[(?:\/)?(?:OUT|INST|SYS|SYSTEM|USER|ASSISTANT)\]/gi, '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/\n{3,}/g, '\n\n')
       .trim();
-  }catch{ return t||""; }
+  } catch {
+    return t || '';
+  }
 }
+
+function handleUnauthorized() {
+  addMsg('bot', 'Session expirée, retour à la connexion.');
+  SAV.clearToken();
+  setTimeout(() => {
+    location.href = '/';
+  }, 800);
+}
+
 async function postJSON(url, payload) {
-  const r = await fetch(url, {
-    method:"POST",
-    headers: { "Content-Type":"application/json", "Authorization":"Bearer " + token },
-    body: JSON.stringify(payload)
+  const result = await SAV.fetchJSON(url, {
+    method: 'POST',
+    body: payload,
+    throwOnError: false
   });
-  const t = await r.text();
-  try { return JSON.parse(t) } catch { return { raw:t } }
-}
-document.getElementById('send').onclick = async () => {
-  const input = document.getElementById('msg');
-  const text = input.value.trim();
-  if (!text || !sessionId) return;
-  addMsg("agent", text);
-  input.value = "";
-  const resp = await postJSON("/api/simulator-chat", { session_id: sessionId, agent_message: text });
-  addMsg("bot", cleanText(resp.bot_message || JSON.stringify(resp)));
-};
-document.getElementById('msg').addEventListener('keydown', e => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById('send').click(); }
-});
-document.querySelectorAll(".actions button").forEach(btn => {
-  btn.onclick = async () => {
-    const act = btn.dataset.act;
-    if (act === "rma") {
-      const r = await postJSON("/api/sav-action", { session_id: sessionId, action_type: "rma", justification:"colis manquant" });
-      addMsg("bot", r.notice || JSON.stringify(r));
-    } else if (act === "discount") {
-      const r = await postJSON("/api/sav-action", { session_id: sessionId, action_type: "discount", amount_cents: 1200, justification:"défaut mineur" });
-      addMsg("bot", r.notice || JSON.stringify(r));
-    } else if (act === "score") {
-      const r = await postJSON("/api/score-session", { session_id: sessionId });
-      addMsg("bot", `Score total: ${r.total}/100\n${JSON.stringify(r.breakdown)}`);
+  if (!result.ok) {
+    if (result.status === 401 || result.status === 403) {
+      handleUnauthorized();
     }
-  };
+    throw result;
+  }
+  return result.data || {};
+}
+
+function ensureReady() {
+  const token = SAV.getToken();
+  if (!token) {
+    addMsg('bot', '⚠️ Token manquant. Merci de vous reconnecter.');
+    setTimeout(() => {
+      location.href = '/';
+    }, 1200);
+    return false;
+  }
+  if (!sessionId) {
+    addMsg('bot', '⚠️ Session introuvable. Reprenez depuis la liste des scénarios.');
+    sendBtn.disabled = true;
+    composerInput.disabled = true;
+    return false;
+  }
+  return true;
+}
+
+sendBtn.addEventListener('click', async () => {
+  if (!ensureReady()) {
+    return;
+  }
+  const text = composerInput.value.trim();
+  if (!text) {
+    return;
+  }
+  addMsg('agent', text);
+  composerInput.value = '';
+  try {
+    const resp = await postJSON('/api/simulator-chat', { session_id: sessionId, agent_message: text });
+    addMsg('bot', cleanText(resp.bot_message || JSON.stringify(resp)));
+  } catch (e) {
+    const message = typeof e?.data === 'string' ? e.data : (e?.message || 'Erreur inconnue');
+    addMsg('bot', 'Erreur: ' + message);
+  }
 });
+
+composerInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendBtn.click();
+  }
+});
+
+document.querySelectorAll('.actions button').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!ensureReady()) {
+      return;
+    }
+    const act = btn.dataset.act;
+    try {
+      if (act === 'rma') {
+        const r = await postJSON('/api/sav-action', { session_id: sessionId, action_type: 'rma', justification: 'colis manquant' });
+        addMsg('bot', r.notice || JSON.stringify(r));
+      } else if (act === 'discount') {
+        const r = await postJSON('/api/sav-action', { session_id: sessionId, action_type: 'discount', amount_cents: 1200, justification: 'défaut mineur' });
+        addMsg('bot', r.notice || JSON.stringify(r));
+      } else if (act === 'score') {
+        const r = await postJSON('/api/score-session', { session_id: sessionId });
+        addMsg('bot', `Score total: ${r.total}/100\n${JSON.stringify(r.breakdown)}`);
+      }
+    } catch (e) {
+      const message = typeof e?.data === 'string' ? e.data : (e?.message || 'Erreur inconnue');
+      addMsg('bot', 'Erreur: ' + message);
+    }
+  });
+});
+
+ensureReady();
 </script>
 </body>
 </html>

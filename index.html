@@ -4,6 +4,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Connexion agent</title>
 <link rel="stylesheet" href="/style.css" />
+<script src="/js/config.js"></script>
+<script src="/js/utils.js"></script>
 <body>
 <header class="bar"><h1>Simulateur SAV — Connexion agent</h1></header>
 <main style="padding:16px;max-width:640px;margin:0 auto">
@@ -23,20 +25,58 @@
 </main>
 <script src="https://unpkg.com/@supabase/supabase-js@2.47.6/dist/umd/supabase.js"></script>
 <script>
-const client = supabase.createClient("https://bkgpmfqzkzxehjgshnga.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrZ3BtZnF6a3p4ZWhqZ3NobmdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5MDM2NDAsImV4cCI6MjA3NTQ3OTY0MH0.1BHkv-grxjDz92bovjDjb-8dHaWPSvQruudVx1kkdqw");
-const msg = document.getElementById('msg');
-document.getElementById('login').onclick = async () => {
-  msg.textContent = "Connexion...";
+const statusMsg = document.getElementById('msg');
+const loginBtn = document.getElementById('login');
+
+function setStatus(message, isError = false) {
+  statusMsg.textContent = message;
+  statusMsg.style.color = isError ? '#fca5a5' : '';
+}
+
+function getCredentials() {
   const email = document.getElementById('email').value.trim();
-  const pass  = document.getElementById('pass').value.trim();
-  const { data, error } = await client.auth.signInWithPassword({ email, password: pass });
-  if (error) { msg.textContent = "Erreur: " + error.message; return; }
-  const token = data.session?.access_token;
-  if (!token) { msg.textContent = "Pas de token retourné."; return; }
-  // Stocke le token en local puis redirige
-  localStorage.setItem("sav_token", token);
-  location.href = "/scenarios.html";
-};
+  const pass = document.getElementById('pass').value.trim();
+  return { email, pass };
+}
+
+const config = window.SUPABASE_CONFIG || {};
+if (!config.url || !config.anonKey) {
+  setStatus('Configuration Supabase invalide.', true);
+  loginBtn.disabled = true;
+  throw new Error('SUPABASE_CONFIG manquante');
+}
+
+const client = supabase.createClient(config.url, config.anonKey);
+
+loginBtn.addEventListener('click', async () => {
+  const { email, pass } = getCredentials();
+  if (!email || !pass) {
+    setStatus('Merci de renseigner email et mot de passe.', true);
+    return;
+  }
+
+  loginBtn.disabled = true;
+  setStatus('Connexion en cours...');
+  try {
+    const { data, error } = await client.auth.signInWithPassword({ email, password: pass });
+    if (error) {
+      setStatus('Erreur: ' + error.message, true);
+      loginBtn.disabled = false;
+      return;
+    }
+    const token = data.session?.access_token;
+    if (!token) {
+      setStatus('Pas de token retourné.', true);
+      loginBtn.disabled = false;
+      return;
+    }
+    SAV.setToken(token);
+    location.href = '/scenarios.html';
+  } catch (e) {
+    setStatus('Exception: ' + (e?.message || e), true);
+    loginBtn.disabled = false;
+  }
+});
 </script>
 </body>
 </html>

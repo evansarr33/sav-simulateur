@@ -2,6 +2,8 @@
 <html lang="fr">
 <meta charset="utf-8" />
 <title>Obtenir mon access_token Supabase</title>
+<script src="/js/config.js"></script>
+<script src="/js/utils.js"></script>
 <body style="font-family: system-ui; padding: 20px">
   <h1>Get Token (Supabase)</h1>
   <p>Entre l'email et le mot de passe de ton agent, puis clique “Se connecter”.</p>
@@ -20,33 +22,46 @@
   <!-- SDK Supabase via CDN (aucune installation) -->
   <script src="https://unpkg.com/@supabase/supabase-js@2.47.6/dist/umd/supabase.js"></script>
   <script>
-    // Ces 2 variables SONT PUBLIQUES par nature (on peut les mettre côté client)
-    const SUPABASE_URL  = "https://bkgpmfqzkzxehjgshnga.supabase.co";
-    const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrZ3BtZnF6a3p4ZWhqZ3NobmdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5MDM2NDAsImV4cCI6MjA3NTQ3OTY0MH0.1BHkv-grxjDz92bovjDjb-8dHaWPSvQruudVx1kkdqw";
+    const out = document.getElementById('out');
+    const config = window.SUPABASE_CONFIG || {};
 
-    const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    if (!config.url || !config.anonKey) {
+      out.textContent = 'Configuration Supabase invalide.';
+      throw new Error('SUPABASE_CONFIG manquante');
+    }
+
+    const client = supabase.createClient(config.url, config.anonKey);
 
     document.getElementById('go').onclick = async () => {
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('pass').value.trim();
-      const out = document.getElementById('out');
-      out.textContent = "Connexion en cours...";
+      out.textContent = 'Connexion en cours...';
+
+      if (!email || !password) {
+        out.textContent = 'Merci de renseigner email et mot de passe.';
+        return;
+      }
 
       try {
         const { data, error } = await client.auth.signInWithPassword({ email, password });
-        if (error) { out.textContent = "Erreur: " + error.message; return; }
+        if (error) {
+          out.textContent = 'Erreur: ' + error.message;
+          return;
+        }
 
-        // Voici le token qui servira dans le header Authorization: Bearer <token>
         const token = data.session?.access_token;
-        if (!token) { out.textContent = "Pas de token retourné."; return; }
+        if (!token) {
+          out.textContent = 'Pas de token retourné.';
+          return;
+        }
 
-        out.textContent =
-`ACCESS TOKEN:
+        SAV.setToken(token);
+        out.textContent = `ACCESS TOKEN:
 ${token}
 
 Astuce: copie-colle ce token dans le champ "Token" de ta page chat, ou dans les tests d’API.`;
       } catch (e) {
-        out.textContent = "Exception: " + String(e);
+        out.textContent = 'Exception: ' + (e?.message || e);
       }
     };
   </script>

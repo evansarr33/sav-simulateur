@@ -2,6 +2,8 @@
 <html lang="fr">
 <meta charset="utf-8" />
 <title>Test simulateur SAV</title>
+<script src="/js/config.js"></script>
+<script src="/js/utils.js"></script>
 <body style="font-family: system-ui; padding: 20px">
   <h1>Test simulateur SAV</h1>
 
@@ -44,53 +46,65 @@
     const tok = () => document.getElementById('tok').value.trim();
     const msg = () => document.getElementById('msg').value || 'Bonjour';
 
-    const fetchJSON = (url, init={}) => {
-      const headers = init.headers || {};
-      const T = tok();
-      if (T) headers['Authorization'] = 'Bearer ' + T;
-      return fetch(url, { ...init, headers }).then(r=>r.text()).then(t=>{ try { return JSON.parse(t) } catch { return t }});
-    };
+    function display(data) {
+      if (typeof data === 'string') {
+        out.textContent = data;
+      } else {
+        out.textContent = JSON.stringify(data, null, 2);
+      }
+    }
 
-    document.getElementById('ping').onclick = async () => {
-      const r = await fetchJSON('/api/simulator-chat');
-      out.textContent = JSON.stringify(r, null, 2);
-    };
+    function displayError(error) {
+      const payload = error?.data ?? error;
+      const text = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
+      out.textContent = 'Erreur: ' + text;
+    }
 
-    document.getElementById('ask').onclick = async () => {
-      const r = await fetchJSON('/api/simulator-chat', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ session_id: sid(), agent_message: msg() })
+    async function fetchJSON(url, init = {}) {
+      const token = tok() || SAV.getToken();
+      const result = await SAV.fetchJSON(url, {
+        ...init,
+        token: token || undefined,
+        throwOnError: false
       });
-      out.textContent = JSON.stringify(r, null, 2);
-    };
+      if (!result.ok) {
+        throw result;
+      }
+      return result.data;
+    }
 
-    document.getElementById('rma').onclick = async () => {
-      const r = await fetchJSON('/api/sav-action', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ session_id: sid(), action_type: 'rma', justification:'colis manquant' })
-      });
-      out.textContent = JSON.stringify(r, null, 2);
-    };
+    function bindAction(id, action) {
+      document.getElementById(id).onclick = async () => {
+        out.textContent = 'Chargement...';
+        try {
+          const data = await action();
+          display(data ?? '(réponse vide)');
+        } catch (e) {
+          if (e.status === 401 || e.status === 403) {
+            SAV.clearToken();
+          }
+          displayError(e);
+        }
+      };
+    }
 
-    document.getElementById('discount').onclick = async () => {
-      const r = await fetchJSON('/api/sav-action', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ session_id: sid(), action_type: 'discount', amount_cents: 1200, justification:'défaut mineur' })
-      });
-      out.textContent = JSON.stringify(r, null, 2);
-    };
-
-    document.getElementById('score').onclick = async () => {
-      const r = await fetchJSON('/api/score-session', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ session_id: sid() })
-      });
-      out.textContent = JSON.stringify(r, null, 2);
-    };
+    bindAction('ping', () => fetchJSON('/api/simulator-chat'));
+    bindAction('ask', () => fetchJSON('/api/simulator-chat', {
+      method: 'POST',
+      body: { session_id: sid(), agent_message: msg() }
+    }));
+    bindAction('rma', () => fetchJSON('/api/sav-action', {
+      method: 'POST',
+      body: { session_id: sid(), action_type: 'rma', justification: 'colis manquant' }
+    }));
+    bindAction('discount', () => fetchJSON('/api/sav-action', {
+      method: 'POST',
+      body: { session_id: sid(), action_type: 'discount', amount_cents: 1200, justification: 'défaut mineur' }
+    }));
+    bindAction('score', () => fetchJSON('/api/score-session', {
+      method: 'POST',
+      body: { session_id: sid() }
+    }));
   </script>
 </body>
 </html>
