@@ -8,7 +8,7 @@
 <header class="bar"><h1>Dashboard formateur</h1><div><button class="btn" id="reload">Recharger</button></div></header>
 <main style="padding:16px">
   <div class="card">
-    <div class="small">Ce tableau lit les données via Supabase REST avec votre token. Assurez-vous d'avoir le rôle <b>trainer</b> pour voir toutes les sessions.</div>
+    <div class="small">Accès réservé aux <b>formateurs</b>. Si vous voyez une erreur 403, demandez à l'admin de vous donner le rôle trainer.</div>
   </div>
   <div id="kpis" class="grid"></div>
   <div class="card">
@@ -18,19 +18,9 @@
   <pre id="log" class="small"></pre>
 </main>
 <script>
-const SUPABASE_URL  = "https://bkgpmfqzkzxehjgshnga.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrZ3BtZnF6a3p4ZWhqZ3NobmdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5MDM2NDAsImV4cCI6MjA3NTQ3OTY0MH0.1BHkv-grxjDz92bovjDjb-8dHaWPSvQruudVx1kkdqw";
 const token = localStorage.getItem("sav_token") || "";
 const log = document.getElementById('log');
 document.getElementById('reload').onclick = () => loadAll();
-
-async function q(path) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    headers: { apikey: SUPABASE_ANON, Authorization: "Bearer " + token }
-  });
-  if (!r.ok) throw new Error(path + " → " + (await r.text()));
-  return await r.json();
-}
 
 function el(tag, html, cls) {
   const d = document.createElement(tag);
@@ -42,33 +32,26 @@ function el(tag, html, cls) {
 async function loadAll() {
   try {
     log.textContent = "Chargement...";
-    const sessions = await q('sessions?select=id,user_id,scenario_id,state,started_at,ended_at&order=started_at.desc&limit=50');
-    const scores   = await q('scores?select=session_id,total&limit=1000');
-    const actions  = await q('actions?select=session_id,approved,amount_cents,type&limit=1000');
-    // KPIs simples
-    const scoreVals = scores.map(s => s.total).filter(n => typeof n === 'number');
-    const avgScore = scoreVals.length ? Math.round(scoreVals.reduce((a,b)=>a+b,0)/scoreVals.length) : 0;
-    const cost = actions.reduce((sum,a)=> sum + (a.amount_cents||0), 0);
-    const resolved = sessions.filter(s => s.state === 'closed').length;
-    const total = sessions.length;
-    const rate = total ? Math.round((resolved/total)*100) : 0;
+    if (!token) { location.href = "/"; return; }
+    const r = await fetch("/api/admin-stats", { headers: { Authorization: "Bearer " + token } });
+    const data = await r.json();
+    if (!r.ok) { log.textContent = "Erreur: " + JSON.stringify(data); return; }
 
-    const kpis = document.getElementById('kpis');
-    kpis.innerHTML = "";
-    kpis.appendChild(el('div', `<div class="card"><div class="small">Score moyen</div><div style="font-size:28px;font-weight:800">${avgScore}</div></div>`));
-    kpis.appendChild(el('div', `<div class="card"><div class="small">Coût cumulé gestes (€)</div><div style="font-size:28px;font-weight:800">${(cost/100).toFixed(2)}</div></div>`));
-    kpis.appendChild(el('div', `<div class="card"><div class="small">Sessions clôturées</div><div style="font-size:28px;font-weight:800">${resolved} / ${total} ( ${rate}% )</div></div>`));
+    const { kpis, sessions } = data;
+    const k = document.getElementById('kpis');
+    k.innerHTML = "";
+    k.appendChild(el('div', `<div class="card"><div class="small">Score moyen</div><div style="font-size:28px;font-weight:800">${kpis.avgScore}</div></div>`));
+    k.appendChild(el('div', `<div class="card"><div class="small">Coût cumulé gestes (€)</div><div style="font-size:28px;font-weight:800">${kpis.costEUR.toFixed ? kpis.costEUR.toFixed(2) : kpis.costEUR}</div></div>`));
+    k.appendChild(el('div', `<div class="card"><div class="small">Sessions clôturées</div><div style="font-size:28px;font-weight:800">${kpis.resolved} / ${kpis.total} ( ${kpis.rate}% )</div></div>`));
 
-    // Table sessions
     const cont = document.getElementById('sessions');
     cont.innerHTML = "";
     sessions.forEach(s => {
-      const row = el('div', `
+      cont.appendChild(el('div', `
         <div class="card">
           <div><b>Session</b>: ${s.id} — <b>État</b>: ${s.state}</div>
           <div class="small">Début: ${s.started_at || "—"} — Fin: ${s.ended_at || "—"}</div>
-        </div>`);
-      cont.appendChild(row);
+        </div>`));
     });
 
     log.textContent = "OK";
@@ -76,8 +59,6 @@ async function loadAll() {
     log.textContent = "Erreur: " + e.message;
   }
 }
-
-if (!token) { location.href = "/"; }
 loadAll();
 </script>
 </body>
