@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8" />
+<title>Obtenir mon access_token Supabase</title>
+<body style="font-family: system-ui; padding: 20px">
+  <h1>Get Token (Supabase)</h1>
+  <p>Entre l'email et le mot de passe de ton agent, puis clique “Se connecter”.</p>
+
+  <div style="margin:12px 0;">
+    <label>Email <input id="email" value="agent@test.fr" style="width:320px" /></label>
+  </div>
+  <div style="margin:12px 0;">
+    <label>Mot de passe <input id="pass" type="password" placeholder="••••••" style="width:320px" /></label>
+  </div>
+  <button id="go">Se connecter et afficher le token</button>
+
+  <h3>Résultat</h3>
+  <pre id="out" style="background:#f6f6f6; padding:12px; border:1px solid #ccc; white-space:pre-wrap;"></pre>
+
+  <!-- SDK Supabase via CDN (aucune installation) -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2.47.6/dist/umd/supabase.js"></script>
+  <script>
+    // Ces 2 variables SONT PUBLIQUES par nature (on peut les mettre côté client)
+    const SUPABASE_URL  = "https://bkgpmfqzkzxehjgshnga.supabase.co";
+    const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrZ3BtZnF6a3p4ZWhqZ3NobmdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5MDM2NDAsImV4cCI6MjA3NTQ3OTY0MH0.1BHkv-grxjDz92bovjDjb-8dHaWPSvQruudVx1kkdqw";
+
+    const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+    document.getElementById('go').onclick = async () => {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('pass').value.trim();
+      const out = document.getElementById('out');
+      out.textContent = "Connexion en cours...";
+
+      try {
+        const { data, error } = await client.auth.signInWithPassword({ email, password });
+        if (error) { out.textContent = "Erreur: " + error.message; return; }
+
+        // Voici le token qui servira dans le header Authorization: Bearer <token>
+        const token = data.session?.access_token;
+        if (!token) { out.textContent = "Pas de token retourné."; return; }
+
+        out.textContent =
+`ACCESS TOKEN:
+${token}
+
+Astuce: copie-colle ce token dans le champ "Token" de ta page chat, ou dans les tests d’API.`;
+      } catch (e) {
+        out.textContent = "Exception: " + String(e);
+      }
+    };
+  </script>
+</body>
+</html>
