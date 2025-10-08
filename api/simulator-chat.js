@@ -188,6 +188,13 @@ export default async function handler(req, res) {
       }
     };
 
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_MODEL}:generateContent`;
+    const resp = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_API_KEY
+      },
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_MODEL}:generateContent?key=${GOOGLE_API_KEY}`;
     const resp = await fetch(endpoint, {
       method: "POST",
@@ -200,6 +207,28 @@ export default async function handler(req, res) {
       return json(res, 502, { error: "Google Generative Language error", details });
     }
     const data = await resp.json();
+
+    const promptBlocked = data?.promptFeedback?.blockReason;
+    if (promptBlocked) {
+      return json(res, 403, { error: "Response blocked", details: promptBlocked });
+    }
+
+    const firstCandidate = Array.isArray(data?.candidates)
+      ? data.candidates.find(c => Array.isArray(c?.content?.parts) && c.content.parts.some(p => p?.text?.trim()))
+      : null;
+
+    if (!firstCandidate) {
+      return json(res, 502, { error: "Google Generative Language error", details: "No candidate text" });
+    }
+
+    if (firstCandidate.finishReason && firstCandidate.finishReason !== "STOP") {
+      return json(res, 502, { error: "Google Generative Language error", details: firstCandidate.finishReason });
+    }
+
+    const bot_message = firstCandidate.content.parts
+      .map(part => part?.text || "")
+      .join("\n")
+      .trim() || "Merci pour votre retour.";
     const bot_message = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "Merci pour votre retour.";
 
     // 4) Écriture message bot
