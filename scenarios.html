@@ -37,12 +37,27 @@ const list = document.getElementById('list');
 const tok  = () => document.getElementById('tok').value.trim();
 
 async function loadScenarios(){
+  const token = tok();
+  if (!token) { out.textContent = "⚠️ Colle d'abord ton token (depuis /token.html)."; return; }
+
   out.textContent = "Chargement...";
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/scenarios?select=id,title,level,persona,mode&order=level.asc`, {
-    headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` }
-  });
+  const r = await fetch(
+    `${SUPABASE_URL}/rest/v1/scenarios?select=id,title,level,persona,mode&order=level.asc`,
+    { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${token}` } }
+  );
+
+  if (!r.ok) {
+    out.textContent = "Erreur chargement: " + (await r.text());
+    return;
+  }
   const rows = await r.json();
   list.innerHTML = "";
+
+  if (!rows.length) {
+    out.textContent = "Aucun scénario visible pour ce compte. Vérifie la table `scenarios` ou les politiques RLS.";
+    return;
+  }
+
   rows.forEach(sc => {
     const card = document.createElement('div');
     card.className = 'card';
@@ -59,9 +74,8 @@ async function loadScenarios(){
   list.querySelectorAll('button').forEach(btn=>{
     btn.onclick = async () => {
       const token = tok();
-      if (!token) { out.textContent = "⚠️ Colle d'abord ton token (Authorization)."; return; }
-      const scenario_id = Number(btn.dataset.id);
       out.textContent = "Création de la session...";
+      const scenario_id = Number(btn.dataset.id);
       const resp = await fetch("/api/new-session", {
         method:"POST",
         headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + token },
@@ -69,7 +83,6 @@ async function loadScenarios(){
       });
       const data = await resp.json();
       if (!resp.ok) { out.textContent = "Erreur: " + JSON.stringify(data); return; }
-      // redirige vers le chat
       location.href = `/chat.html?session_id=${encodeURIComponent(data.session_id)}`;
     };
   });
@@ -77,6 +90,9 @@ async function loadScenarios(){
   out.textContent = "Prêt.";
 }
 
+// recharge la liste quand tu colles le token
+document.getElementById('tok').addEventListener('change', loadScenarios);
+document.getElementById('tok').addEventListener('input', ()=>{ out.textContent=""; });
 loadScenarios();
 </script>
 </body>
