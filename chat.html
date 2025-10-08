@@ -1,1 +1,44 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Simulateur SAV – Chat</title>
+<link rel="stylesheet" href="/style.css" />
+<body>
+  <header class="bar">
+    <h1>Simulateur SAV</h1>
+    <div class="right">
+      <label>Session:
+        <input id="sid" value="demo" />
+      </label>
+      <button id="clear">Effacer</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section id="thread" class="thread"></section>
+
+    <aside class="actions">
+      <h3>Actions SAV</h3>
+      <button data-act="rma">Créer RMA</button>
+      <button data-act="discount">-20% (test)</button>
+      <button data-act="score">Clôturer & scorer</button>
+
+      <details>
+        <summary>Avancé (optionnel)</summary>
+        <label>Token (Authorization):
+          <textarea id="tok" placeholder="colle ici le access_token Supabase si tu es connecté"></textarea>
+        </label>
+      </details>
+    </aside>
+  </main>
+
+  <footer class="composer">
+    <input id="msg" placeholder="Tape ton message..." />
+    <button id="send">Envoyer</button>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
 
