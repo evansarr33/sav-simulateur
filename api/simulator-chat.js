@@ -1,9 +1,9 @@
 // Sécurité: token obligatoire + vérif session + CORS strict + rate-limit
-// Appel IA via OpenRouter (inchangé)
+// Appel IA via Google Generative Language API
 
 const ORIGIN = process.env.ALLOWED_ORIGIN || "https://sav-simulateur.vercel.app";
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "mistralai/mistral-7b-instruct:free";
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+const GOOGLE_MODEL = process.env.GOOGLE_MODEL || "gemini-2.0-flash";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -167,28 +167,69 @@ export default async function handler(req, res) {
       ...trimmedHistory
     ];
 
-    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: OPENROUTER_MODEL,
-        messages: messagesPayload,
+    if (!GOOGLE_API_KEY) {
+      return json(res, 500, { error: "Missing GOOGLE_API_KEY" });
+    }
+
+    const googlePayload = {
+      systemInstruction: {
+        role: "system",
+        parts: [{ text: systemContent }]
+      },
+      contents: messagesPayload
+        .filter(m => m.role !== "system")
+        .map(m => ({
+          role: m.role === "user" ? "user" : "model",
+          parts: [{ text: m.content }]
+        })),
+      generationConfig: {
         temperature: 0.6,
-        max_tokens: 256
-      })
+        maxOutputTokens: 256
+      }
+    };
+
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_MODEL}:generateContent`;
+    const resp = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_API_KEY
+      },
+      body: JSON.stringify(googlePayload)
     });
 
     if (!resp.ok) {
       const details = await resp.text();
-      return json(res, 502, { error: "OpenRouter error", details });
+      return json(res, 502, { error: "Google Generative Language error", details });
     }
     const data = await resp.json();
-    const bot_message = data?.choices?.[0]?.message?.content?.trim() || "Merci pour votre retour.";
+
+    const promptBlocked = data?.promptFeedback?.blockReason;
+    if (promptBlocked) {
+      return json(res, 403, { error: "Response blocked", details: promptBlocked });
+    }
+
+    const firstCandidate = Array.isArray(data?.candidates)
+      ? data.candidates.find(c => Array.isArray(c?.content?.parts) && c.content.parts.some(p => p?.text?.trim()))
+      : null;
+
+    if (!firstCandidate) {
+      return json(res, 502, { error: "Google Generative Language error", details: "No candidate text" });
+    }
+
+    if (firstCandidate.finishReason && firstCandidate.finishReason !== "STOP") {
+      return json(res, 502, { error: "Google Generative Language error", details: firstCandidate.finishReason });
+    }
+
+    const bot_message = firstCandidate.content.parts
+      .map(part => part?.text || "")
+      .join("\n")
+      .trim() || "Merci pour votre retour.";
 
     // 4) Écriture message bot
     await insertMessage(session_id, "bot", bot_message);
 
-    return json(res, 200, { bot_message, humeur: 0, meta: { model: OPENROUTER_MODEL } });
+    return json(res, 200, { bot_message, humeur: 0, meta: { model: GOOGLE_MODEL } });
   } catch (e) {
     return json(res, 500, { error: "Internal error", details: String(e) });
   }
