@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+  <body>
+    <button id="go">Tester l'API</button>
+    <pre id="out"></pre>
+    <script>
+      document.getElementById('go').onclick = async () => {
+        const r = await fetch("/api/simulator-chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: "demo",
+            agent_message: "Bonjour, test depuis test.html"
+          })
+        });
+        document.getElementById('out').textContent = await r.text();
+      };
+    </script>
+  </body>
+</html>
