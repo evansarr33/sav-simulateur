@@ -2,41 +2,60 @@
 <html lang="fr">
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Connexion agent</title>
+<title>Espace Support Client</title>
 <link rel="stylesheet" href="/style.css" />
 <body>
-<header class="bar"><h1>Simulateur SAV — Connexion agent</h1></header>
-<main style="padding:16px;max-width:640px;margin:0 auto">
-  <div class="card">
-    <h2>Se connecter</h2>
-    <p class="small">Utilisez votre email et mot de passe d'agent.</p>
-    <div style="display:grid;gap:8px">
-      <input id="email" placeholder="email@exemple.fr" />
-      <input id="pass" type="password" placeholder="Mot de passe" />
-      <button class="btn" id="login">Connexion</button>
+<header class="bar"><h1>Plateforme Support Client</h1></header>
+<main style="padding:32px 16px;max-width:720px;margin:0 auto">
+  <div class="card" style="margin-top:0">
+    <h2 style="margin-top:0">Bienvenue</h2>
+    <p class="small">Accédez à votre espace dédié pour traiter les demandes clients ou superviser les conversations en cours.</p>
+    <div style="display:grid;gap:14px;margin-top:18px">
+      <label class="small" for="email">Adresse e-mail professionnelle</label>
+      <input id="email" placeholder="prenom.nom@entreprise.fr" autocomplete="username" />
+      <label class="small" for="pass">Mot de passe</label>
+      <input id="pass" type="password" placeholder="••••••••" autocomplete="current-password" />
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <button class="btn" data-target="agent">Connexion agent</button>
+        <button class="btn" data-target="admin" style="background:#0f172a">Connexion administration</button>
+      </div>
     </div>
-    <div id="msg" class="small" style="margin-top:8px"></div>
+    <div id="msg" class="small" style="margin-top:12px"></div>
   </div>
-  <div class="alert small">
-    Astuce: après connexion, vous serez redirigé vers le <b>sélecteur de scénarios</b>.
+  <div class="grid" style="margin-top:24px">
+    <div class="card">
+      <h3 style="margin:0 0 8px 0">Espace agent</h3>
+      <p class="small">Préparez vos réponses, appliquez les gestes commerciaux autorisés et restez strictement dans le rôle d'un conseiller clientèle.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin:0 0 8px 0">Tableau de bord administration</h3>
+      <p class="small">Suivez l'ensemble des conversations, évaluez les performances et assurez la conformité de chaque échange.</p>
+    </div>
   </div>
 </main>
 <script src="https://unpkg.com/@supabase/supabase-js@2.47.6/dist/umd/supabase.js"></script>
 <script>
 const client = supabase.createClient("https://bkgpmfqzkzxehjgshnga.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrZ3BtZnF6a3p4ZWhqZ3NobmdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5MDM2NDAsImV4cCI6MjA3NTQ3OTY0MH0.1BHkv-grxjDz92bovjDjb-8dHaWPSvQruudVx1kkdqw");
 const msg = document.getElementById('msg');
-document.getElementById('login').onclick = async () => {
-  msg.textContent = "Connexion...";
+async function signIn(target) {
+  msg.textContent = "Vérification des accès...";
   const email = document.getElementById('email').value.trim();
   const pass  = document.getElementById('pass').value.trim();
+  if (!email || !pass) { msg.textContent = "Merci de renseigner vos identifiants."; return; }
   const { data, error } = await client.auth.signInWithPassword({ email, password: pass });
   if (error) { msg.textContent = "Erreur: " + error.message; return; }
   const token = data.session?.access_token;
-  if (!token) { msg.textContent = "Pas de token retourné."; return; }
-  // Stocke le token en local puis redirige
+  if (!token) { msg.textContent = "Connexion refusée."; return; }
   localStorage.setItem("sav_token", token);
-  location.href = "/scenarios.html";
-};
+  if (target === "admin") {
+    location.href = "/admin.html";
+  } else {
+    location.href = "/scenarios.html";
+  }
+}
+document.querySelectorAll('[data-target]').forEach(btn => {
+  btn.addEventListener('click', () => signIn(btn.dataset.target));
+});
 </script>
 </body>
 </html>

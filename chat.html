@@ -2,27 +2,28 @@
 <html lang="fr">
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Simulateur SAV — Chat</title>
+<title>Espace agent — Conversation client</title>
 <link rel="stylesheet" href="/style.css" />
 <body>
 <header class="bar">
-  <h1>Chat de simulation</h1>
-  <div class="small"><a href="/scenarios.html" style="color:#60a5fa;text-decoration:none">← Scénarios</a></div>
+  <h1>Conversation client</h1>
+  <div class="small"><a href="/scenarios.html" style="color:#1d4ed8;text-decoration:none">← Dossiers clients</a></div>
 </header>
 
 <main class="layout">
   <section id="thread" class="thread"></section>
   <aside class="actions">
-    <h3>Actions SAV</h3>
+    <h3>Actions de suivi</h3>
     <button class="btn" data-act="rma">Créer RMA</button>
-    <button class="btn" data-act="discount">-20% (test)</button>
-    <button class="btn" data-act="score" style="background:#22c55e;color:#05240e">Clôturer & scorer</button>
-    <div class="alert small">Session: <span id="sid"></span></div>
+    <button class="btn" data-act="discount">Appliquer un geste commercial</button>
+    <button class="btn" data-act="score" style="background:#16a34a">Clôturer & scorer</button>
+    <div class="alert small">Identifiant dossier: <span id="sid"></span></div>
+    <div class="alert small" style="margin-top:8px">Rappel: le correspondant reste un client réel pour vous. Ne mentionnez jamais d'outils internes ni d'IA.</div>
   </aside>
 </main>
 
 <footer class="composer">
-  <input id="msg" placeholder="Tape ton message..." />
+  <input id="msg" placeholder="Rédigez votre réponse client..." />
   <button class="btn" id="send">Envoyer</button>
 </footer>
 
@@ -32,23 +33,40 @@ const q = new URLSearchParams(location.search);
 const sessionId = q.get("session_id") || "";
 document.getElementById('sid').textContent = sessionId || "(vide)";
 const thread = document.getElementById('thread');
+function formatText(text = "") {
+  const cleaned = (text ?? "").toString().replace(/\u0000/g, "").trim();
+  const safe = cleaned
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
+  return safe || "<span class=\"muted\">(message indisponible)</span>";
+}
 function addMsg(who, text) {
   const div = document.createElement("div");
   div.className = `msg ${who}`;
-  div.innerHTML = `<div class="bubble">${(text||"").replace(/</g,"&lt;")}</div>`;
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.innerHTML = formatText(text);
+  div.appendChild(bubble);
   thread.appendChild(div);
   thread.scrollTop = thread.scrollHeight;
 }
-function cleanText(t=""){
-  try{
-    return String(t)
-      .replace(/<\/?s>/gi, "")
-      .replace(/\[(?:\/)?(?:OUT|INST|SYS|SYSTEM|USER|ASSISTANT)\]/gi, "")
-      .replace(/<[^>]+>/g, "")
-      .replace(/```[\s\S]*?```/g, "")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-  }catch{ return t||""; }
+
+async function loadHistory() {
+  if (!sessionId || !token) return;
+  try {
+    const r = await fetch(`/api/simulator-chat?session_id=${encodeURIComponent(sessionId)}`, {
+      headers: { Authorization: "Bearer " + token }
+    });
+    if (!r.ok) return;
+    const data = await r.json();
+    (data.messages || []).forEach(m => {
+      addMsg(m.author === "agent" ? "agent" : "bot", m.content);
+    });
+  } catch (e) {
+    console.error("history load failed", e);
+  }
 }
 async function postJSON(url, payload) {
   const r = await fetch(url, {
@@ -66,7 +84,8 @@ document.getElementById('send').onclick = async () => {
   addMsg("agent", text);
   input.value = "";
   const resp = await postJSON("/api/simulator-chat", { session_id: sessionId, agent_message: text });
-  addMsg("bot", cleanText(resp.bot_message || JSON.stringify(resp)));
+  const botText = resp.bot_message ?? resp.notice ?? JSON.stringify(resp);
+  addMsg("bot", botText);
 };
 document.getElementById('msg').addEventListener('keydown', e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById('send').click(); }
@@ -86,6 +105,7 @@ document.querySelectorAll(".actions button").forEach(btn => {
     }
   };
 });
+loadHistory();
 </script>
 </body>
 </html>
